@@ -1,0 +1,114 @@
+package faas
+
+import (
+	"encoding/json"
+	"faas/proto"
+	"github.com/klauspost/compress/zstd"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
+)
+
+const BODY_USE_ZSTD = 256
+
+var zstdEncoder, _ = zstd.NewWriter(nil)
+
+type EventCtx struct {
+	header http.Header
+	send   func()
+	*proto.Event
+	resp        proto.Response
+	respHeaders http.Header
+}
+
+func ctxFromEventData(d []byte) *EventCtx {
+	var e proto.Event
+	err := e.Unmarshal(d)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+	return &EventCtx{
+		Event:       &e,
+		resp:        proto.Response{EventId: e.EventId, Status: 200},
+		respHeaders: http.Header{},
+	}
+}
+
+func ctxFromEvent(e *proto.Event) *EventCtx {
+	return &EventCtx{
+		Event:       e,
+		resp:        proto.Response{EventId: e.EventId, Status: 200},
+		respHeaders: http.Header{},
+	}
+}
+
+// Send set body(see EventCtx.SetBody) and send response immediately
+func (c *EventCtx) Send(body interface{}) error {
+	err := c.SetBody(body)
+	if err != nil {
+		return err
+	}
+	c.send()
+	return nil
+}
+
+// Header get event headers as http.Header
+func (c *EventCtx) Header() http.Header {
+	if c.header != nil {
+		return c.header
+	}
+	c.header = map[string][]string{}
+	for i := 0; i < len(c.Headers)/2; i++ {
+		c.header.Add(c.Headers[2*i], c.Headers[2*i+1])
+	}
+	return c.header
+}
+
+// SetBody set response body. supported type: string, io.Reader, struct
+func (c *EventCtx) SetBody(value interface{}) error {
+	switch val := value.(type) {
+	case string:
+		c.resp.Body = []byte(val)
+		if c.respHeaders.Get("content-type") == "" {
+			c.respHeaders.Set("content-type", "text/plain;charset=utf8")
+		}
+		c.respHeaders.Set("content-length", strconv.Itoa(len(c.resp.Body)))
+	case io.Reader:
+		d, _ := io.ReadAll(val)
+		c.respHeaders.Set("content-length", strconv.Itoa(len(d)))
+		c.resp.Body = d
+	case error:
+		c.resp.Body = []byte(val.Error())
+		if c.respHeaders.Get("content-type") == "" {
+			c.respHeaders.Set("content-type", "text/plain;charset=utf8")
+		}
+		c.respHeaders.Set("content-length", strconv.Itoa(len(c.resp.Body)))
+	default:
+		d, err := json.Marshal(val)
+		if err != nil {
+			return err
+		}
+		c.respHeaders.Set("content-length", strconv.Itoa(len(d)))
+		c.respHeaders.Set("content-type", "application/json")
+		c.resp.Body = d
+	}
+	if len(c.resp.Body) > BODY_USE_ZSTD {
+		target := make([]byte, len(c.resp.Body))
+		target = zstdEncoder.EncodeAll(c.resp.Body, nil)
+		if len(target) < len(c.resp.Body) {
+			c.resp.ContentType = "zstd"
+			c.resp.Body = target
+		}
+	}
+	return nil
+}
+
+func (c *EventCtx) Error(status int32, error interface{}) {
+	if status < 200 || status > 599 {
+		status = 500
+	}
+	c.resp.Status = status
+	_ = c.Send(error)
+}
