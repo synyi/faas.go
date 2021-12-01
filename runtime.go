@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -61,57 +62,62 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 		_ = sub.Drain()
 		os.Exit(0)
 	}()
-
+	wg := sync.WaitGroup{}
+	wg.Add(concurrenti)
 	for i := 0; i < concurrenti; i++ {
-		msg := <-msgCh
 		go func() {
-			err = func() (err error) {
-				var senderr error
-				var sent bool
-				ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
-				defer func() {
-					cancel()
-					e := recover()
-					if e != nil {
-						err = fmt.Errorf("%s", e)
+			for {
+				msg := <-msgCh
+				err = func() (err error) {
+					var senderr error
+					var sent bool
+					ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+					defer func() {
+						cancel()
+						e := recover()
+						if e != nil {
+							err = fmt.Errorf("%s", e)
+						}
+					}()
+					c := ctxFromEventData(msg.Data)
+					c.send = func() {
+						c.resp.Headers = buildHeaders(c.respHeaders)
+						d, _ := c.resp.Marshal()
+						senderr = nc.Publish("faas.response."+c.SenderId, d)
+						sent = true
 					}
+					go func() {
+						<-ctx.Done()
+						if ctx.Err() == context.DeadlineExceeded {
+							log.Println("handler not finish in timeout, exit")
+							os.Exit(1)
+						}
+					}()
+					err = handler(context.Background(), c)
+					if !sent {
+						if err == nil {
+							c.send()
+							err = senderr
+						} else {
+							c.Error(500, err)
+						}
+						if err == nil {
+							_ = msg.Ack()
+						} else {
+							_ = msg.Nak()
+						}
+					}
+					return
 				}()
-				c := ctxFromEventData(msg.Data)
-				c.send = func() {
-					c.resp.Headers = buildHeaders(c.respHeaders)
-					d, _ := c.resp.Marshal()
-					senderr = nc.Publish("faas.response."+c.SenderId, d)
-					sent = true
+				if err != nil {
+					log.Println("panic:", err)
+					_ = msg.Nak()
 				}
-				go func() {
-					<-ctx.Done()
-					if ctx.Err() == context.DeadlineExceeded {
-						log.Println("handler not finish in timeout, exit")
-						os.Exit(1)
-					}
-				}()
-				err = handler(context.Background(), c)
-				if !sent {
-					if err == nil {
-						c.send()
-						err = senderr
-					} else {
-						c.Error(500, err)
-					}
-					if err == nil {
-						_ = msg.Ack()
-					} else {
-						_ = msg.Nak()
-					}
-				}
-				return
-			}()
-			if err != nil {
-				log.Println("panic:", err)
-				_ = msg.Nak()
 			}
+			wg.Done()
 		}()
 	}
+	wg.Wait()
 }
 
 func testInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
