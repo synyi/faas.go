@@ -55,10 +55,12 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	if err != nil {
 		log.Panicln(err)
 	}
+	stopCtx, cancel := context.WithCancel(context.Background())
 	go func() {
 		c := make(chan os.Signal)
 		signal.Notify(c, syscall.SIGTERM)
 		<-c
+		cancel()
 		_ = sub.Drain()
 		os.Exit(0)
 	}()
@@ -67,7 +69,13 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	for i := 0; i < concurrenti; i++ {
 		go func() {
 			for {
-				msg := <-msgCh
+				var msg *nats.Msg
+				select {
+				case <-stopCtx.Done():
+					wg.Done()
+					return
+				case msg = <-msgCh:
+				}
 				err = func() (err error) {
 					var senderr error
 					var sent bool
@@ -114,7 +122,6 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 					_ = msg.Nak()
 				}
 			}
-			wg.Done()
 		}()
 	}
 	wg.Wait()
