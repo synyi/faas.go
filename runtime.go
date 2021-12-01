@@ -21,6 +21,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	target := os.Getenv("FAAS_TARGET")
 	natsUrl := os.Getenv("NATS_URL")
 	timeout := os.Getenv("FAAS_TIMEOUT")
+	concurrent := os.Getenv("FAAS_CONCURRENT")
 	if target == "" {
 		log.Fatalln("env FAAS_TARGET missing")
 	}
@@ -34,13 +35,22 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 			timeoutDuration = time.Duration(t) * time.Second
 		}
 	}
+	var concurrenti int
+	if concurrent != "" {
+		concurrenti, _ = strconv.Atoi(concurrent)
+		if concurrenti < 1 {
+			concurrenti = 1
+		}
+	}
+
 	nc, err := nats.Connect(natsUrl)
 	if err != nil {
 		log.Panicln("cannot connect to nats, ", err)
 	}
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
-	sub, err := js.PullSubscribe(stream, strings.ReplaceAll(stream, ".", "_"))
+	msgCh := make(chan *nats.Msg, concurrenti)
+	sub, err := js.ChanSubscribe(stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -51,55 +61,55 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 		_ = sub.Drain()
 		os.Exit(0)
 	}()
-	for {
-		msg, err := sub.Fetch(1, nats.MaxWait(time.Second*20))
-		if err == nats.ErrTimeout {
-			continue
-		}
-		if err != nil {
-			log.Printf("next message error: %v\n", err)
-		}
-		err = func() (err error) {
-			var senderr error
-			var sent bool
-			ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
-			defer func() {
-				cancel()
-				e := recover()
-				if e != nil {
-					err = fmt.Errorf("%s", e)
+
+	for i := 0; i < concurrenti; i++ {
+		msg := <-msgCh
+		go func() {
+			err = func() (err error) {
+				var senderr error
+				var sent bool
+				ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+				defer func() {
+					cancel()
+					e := recover()
+					if e != nil {
+						err = fmt.Errorf("%s", e)
+					}
+				}()
+				c := ctxFromEventData(msg.Data)
+				c.send = func() {
+					c.resp.Headers = buildHeaders(c.respHeaders)
+					d, _ := c.resp.Marshal()
+					senderr = nc.Publish("faas.response."+c.SenderId, d)
+					sent = true
 				}
+				go func() {
+					<-ctx.Done()
+					if ctx.Err() == context.DeadlineExceeded {
+						log.Println("handler not finish in timeout, exit")
+						os.Exit(1)
+					}
+				}()
+				err = handler(context.Background(), c)
+				if !sent {
+					if err == nil {
+						c.send()
+						err = senderr
+					} else {
+						c.Error(500, err)
+					}
+					if err == nil {
+						_ = msg.Ack()
+					} else {
+						_ = msg.Nak()
+					}
+				}
+				return
 			}()
-			c := ctxFromEventData(msg[0].Data)
-			//fmt.Println(c.EventId)
-			c.send = func() {
-				c.resp.Headers = buildHeaders(c.respHeaders)
-				d, _ := c.resp.Marshal()
-				senderr = nc.Publish("faas.response."+c.SenderId, d)
-				sent = true
+			if err != nil {
+				log.Println("panic:", err)
+				_ = msg.Nak()
 			}
-			go func() {
-				<-ctx.Done()
-				if ctx.Err() == context.DeadlineExceeded {
-					log.Println("handler not finish in timeout, exit")
-					os.Exit(1)
-				}
-			}()
-			err = handler(context.Background(), c)
-			if !sent {
-				if err == nil {
-					c.send()
-					err = senderr
-				} else {
-					c.Error(500, err)
-				}
-				if err == nil {
-					_ = msg[0].Ack()
-				} else {
-					_ = msg[0].Nak()
-				}
-			}
-			return
 		}()
 	}
 }
