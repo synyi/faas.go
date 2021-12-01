@@ -3,7 +3,7 @@ package faas
 import (
 	"encoding/json"
 	"github.com/klauspost/compress/zstd"
-	"github.com/synyi/faas/proto"
+	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
 	"net/http"
