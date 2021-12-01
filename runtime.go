@@ -2,10 +2,10 @@ package faas
 
 import (
 	"context"
-	"faas/proto"
 	"fmt"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
+	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
 	"net/http"
