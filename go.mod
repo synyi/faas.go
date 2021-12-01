@@ -1,4 +1,4 @@
-module faas
+module github.com/synyi/faas
 
 go 1.17
 

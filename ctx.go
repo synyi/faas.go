@@ -2,8 +2,8 @@ package faas
 
 import (
 	"encoding/json"
-	"faas/proto"
 	"github.com/klauspost/compress/zstd"
+	"github.com/synyi/faas/proto"
 	"io"
 	"log"
 	"net/http"
