@@ -18,6 +18,8 @@ import (
 	"time"
 )
 
+var nc *nats.Conn
+
 func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	target := os.Getenv("FAAS_TARGET")
 	natsUrl := os.Getenv("NATS_URL")
@@ -43,15 +45,15 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 			concurrenti = 1
 		}
 	}
-
-	nc, err := nats.Connect(natsUrl)
+	var err error
+	nc, err = nats.Connect(natsUrl)
 	if err != nil {
 		log.Panicln("cannot connect to nats, ", err)
 	}
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
 	msgCh := make(chan *nats.Msg, concurrenti)
-	sub, err := js.ChanSubscribe(stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
+	sub, err := js.ChanQueueSubscribe(stream, "queue."+stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -90,6 +92,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 					c := ctxFromEventData(msg.Data)
 					c.send = func() {
 						c.resp.Headers = buildHeaders(c.respHeaders)
+						c.resp.Time = time.Now().UnixMilli()
 						d, _ := c.resp.Marshal()
 						senderr = nc.Publish("faas.response."+c.SenderId, d)
 						sent = true
@@ -155,7 +158,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 			Method:      r.Method,
 			Url:         r.RequestURI,
 			Body:        body,
-			BodyType:    proto.RAW,
+			BodyType:    proto.Raw,
 			ContentType: "",
 			Headers:     buildHeaders(r.Header),
 			Source:      r.RemoteAddr,

@@ -2,7 +2,6 @@ package faas
 
 import (
 	"encoding/json"
-	"github.com/klauspost/compress/zstd"
 	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
@@ -10,9 +9,6 @@ import (
 	"strconv"
 )
 
-const BODY_USE_ZSTD = 256
-
-var zstdEncoder, _ = zstd.NewWriter(nil)
 
 type EventCtx struct {
 	header http.Header
@@ -93,14 +89,6 @@ func (c *EventCtx) SetBody(value interface{}) error {
 		c.respHeaders.Set("content-length", strconv.Itoa(len(d)))
 		c.respHeaders.Set("content-type", "application/json")
 		c.resp.Body = d
-	}
-	if len(c.resp.Body) > BODY_USE_ZSTD {
-		target := make([]byte, len(c.resp.Body))
-		target = zstdEncoder.EncodeAll(c.resp.Body, nil)
-		if len(target) < len(c.resp.Body) {
-			c.resp.ContentType = "zstd"
-			c.resp.Body = target
-		}
 	}
 	return nil
 }
