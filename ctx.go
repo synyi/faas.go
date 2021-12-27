@@ -110,8 +110,18 @@ func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err != nil {
-		return nil, err
-	}
 	return resp.Body, nil
+}
+
+func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
+	if gwUrl == "" {
+		return "", errors.New("gateway url not defined (use FAAS_GATEWAY env)")
+	}
+	resp, err := http.Post(path.Join(gwUrl, "/api/blob/persist"), "application/zip", r)
+	if err != nil {
+		return "", err
+	}
+	d, _ := io.ReadAll(resp.Body)
+	id := string(d)
+	return id, nil
 }
