@@ -19,7 +19,11 @@ import (
 )
 
 var nc *nats.Conn
+var gwUrl string
 
+func init() {
+	gwUrl = os.Getenv("FAAS_GATEWAY")
+}
 func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	target := os.Getenv("FAAS_TARGET")
 	natsUrl := os.Getenv("NATS_URL")

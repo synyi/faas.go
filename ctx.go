@@ -2,13 +2,14 @@ package faas
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
 )
-
 
 type EventCtx struct {
 	header http.Header
@@ -99,4 +100,18 @@ func (c *EventCtx) Error(status int32, error interface{}) {
 	}
 	c.resp.Status = status
 	_ = c.Send(error)
+}
+
+func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
+	if gwUrl == "" {
+		return nil, errors.New("gateway url not defined (use FAAS_GATEWAY env)")
+	}
+	resp, err := http.Get(path.Join(gwUrl, "/api/blob/", id))
+	if err != nil {
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
 }
