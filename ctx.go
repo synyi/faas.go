@@ -103,7 +103,7 @@ func (c *EventCtx) Error(status int32, error interface{}) {
 
 func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 	u := gwUrl
-	u.RawPath = "/api/blob/" + id
+	u.Path = "/api/blob/" + id
 	log.Println(u.String())
 	resp, err := http.Get(u.String())
 	if err != nil {
@@ -119,7 +119,7 @@ func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 
 func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
 	u := gwUrl
-	u.RawPath = "/api/blob/persist"
+	u.Path = "/api/blob/persist"
 	resp, err := http.Post(u.String(), "application/zip", r)
 	if err != nil {
 		return "", err
