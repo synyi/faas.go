@@ -15,7 +15,7 @@ var functionName string
 var waiterMap map[string]chan *proto.Response
 var wl = sync.Mutex{}
 
-func init() {
+func initCallback() {
 	functionName = "function:" + os.Getenv("FAAS_NAME")
 	if functionName == "" {
 		functionName = "other caller"
@@ -52,8 +52,11 @@ func wait(id string) chan *proto.Response {
 	return c
 }
 
+var callback = sync.Once{}
+
 // Call another faas function
 func call(ctx context.Context, target string, req *proto.Event, ttl int32) (*proto.Response, error) {
+	callback.Do(initCallback)
 	req.EventId = nuid.Next()
 	req.Ttl = ttl
 	req.Source = functionName
