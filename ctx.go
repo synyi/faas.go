@@ -2,12 +2,10 @@ package faas
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
 	"net/http"
-	"path"
 	"strconv"
 )
 
@@ -103,10 +101,9 @@ func (c *EventCtx) Error(status int32, error interface{}) {
 }
 
 func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
-	if gwUrl == "" {
-		return nil, errors.New("gateway url not defined (use FAAS_GATEWAY env)")
-	}
-	resp, err := http.Get(path.Join(gwUrl, "/api/blob/", id))
+	u := gwUrl
+	u.RawPath = "/api/blob/" + id
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
 	}
@@ -114,10 +111,9 @@ func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 }
 
 func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
-	if gwUrl == "" {
-		return "", errors.New("gateway url not defined (use FAAS_GATEWAY env)")
-	}
-	resp, err := http.Post(path.Join(gwUrl, "/api/blob/persist"), "application/zip", r)
+	u := gwUrl
+	u.RawPath = "/api/blob/persist"
+	resp, err := http.Post(u.String(), "application/zip", r)
 	if err != nil {
 		return "", err
 	}

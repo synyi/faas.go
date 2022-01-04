@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -19,10 +20,16 @@ import (
 )
 
 var nc *nats.Conn
-var gwUrl string
+var gwUrl url.URL
 
 func init() {
-	gwUrl = os.Getenv("FAAS_GATEWAY")
+	g := os.Getenv("FAAS_GATEWAY")
+
+	gu, err := url.Parse(g)
+	if err != nil {
+		log.Panicln("invalid FAAS_GATEWAY url: ", err)
+	}
+	gwUrl = *gu
 }
 func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	target := os.Getenv("FAAS_TARGET")
