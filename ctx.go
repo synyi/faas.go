@@ -2,6 +2,7 @@ package faas
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
@@ -103,9 +104,15 @@ func (c *EventCtx) Error(status int32, error interface{}) {
 func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 	u := gwUrl
 	u.RawPath = "/api/blob/" + id
+	log.Println(u.String())
 	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		data, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, errors.New(string(data))
 	}
 	return resp.Body, nil
 }
