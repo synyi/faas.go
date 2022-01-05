@@ -52,9 +52,9 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	var concurrenti int
 	if concurrent != "" {
 		concurrenti, _ = strconv.Atoi(concurrent)
-		if concurrenti < 1 {
-			concurrenti = 1
-		}
+	}
+	if concurrenti < 1 {
+		concurrenti = 1
 	}
 	var err error
 	nc, err = nats.Connect(natsUrl)
@@ -64,7 +64,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
 	msgCh := make(chan *nats.Msg, concurrenti)
-	sub, err := js.ChanQueueSubscribe(stream, "queue."+stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
+	sub, err := js.ChanQueueSubscribe(stream, "dg."+stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
 	if err != nil {
 		log.Panicln(err)
 	}
