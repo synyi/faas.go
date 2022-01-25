@@ -10,7 +10,6 @@ import (
 	"sync"
 )
 
-var clientId = nuid.Next()
 var functionName string
 var waiterMap map[string]chan *proto.Response
 var wl = sync.Mutex{}

@@ -13,9 +13,11 @@ import (
 type EventCtx struct {
 	header http.Header
 	send   func()
+	retry  func()
 	*proto.Event
 	resp        proto.Response
 	respHeaders http.Header
+	err         error
 }
 
 func ctxFromEventData(d []byte) *EventCtx {
@@ -27,7 +29,7 @@ func ctxFromEventData(d []byte) *EventCtx {
 	}
 	return &EventCtx{
 		Event:       &e,
-		resp:        proto.Response{EventId: e.EventId, Status: 200},
+		resp:        proto.Response{EventId: e.EventId, Status: 200, RequestId: e.RequestId},
 		respHeaders: http.Header{},
 	}
 }
@@ -35,20 +37,20 @@ func ctxFromEventData(d []byte) *EventCtx {
 func ctxFromEvent(e *proto.Event) *EventCtx {
 	return &EventCtx{
 		Event:       e,
-		resp:        proto.Response{EventId: e.EventId, Status: 200},
+		resp:        proto.Response{EventId: e.EventId, Status: 200, RequestId: e.RequestId},
 		respHeaders: http.Header{},
 	}
 }
 
-// Send set body(see EventCtx.SetBody) and send response immediately
-func (c *EventCtx) Send(body interface{}) error {
-	err := c.SetBody(body)
-	if err != nil {
-		return err
-	}
-	c.send()
-	return nil
-}
+//// Send set body(see EventCtx.SetBody) and send response immediately
+//func (c *EventCtx) Send(body interface{}) error {
+//	err := c.Respinse(body)
+//	if err != nil {
+//		return err
+//	}
+//	c.send()
+//	return nil
+//}
 
 // Header get event headers as http.Header
 func (c *EventCtx) Header() http.Header {
@@ -62,8 +64,13 @@ func (c *EventCtx) Header() http.Header {
 	return c.header
 }
 
-// SetBody set response body. supported type: string, io.Reader, struct
-func (c *EventCtx) SetBody(value interface{}) error {
+// Response set response body. supported type: string, io.Reader, struct, error and send to client immediately
+func (c *EventCtx) Response(status int32, value interface{}) error {
+	if status == 0 {
+		c.resp.Status = 200
+	} else {
+		c.resp.Status = status
+	}
 	switch val := value.(type) {
 	case string:
 		c.resp.Body = []byte(val)
@@ -90,16 +97,17 @@ func (c *EventCtx) SetBody(value interface{}) error {
 		c.respHeaders.Set("content-type", "application/json")
 		c.resp.Body = d
 	}
+	c.send()
 	return nil
 }
 
-func (c *EventCtx) Error(status int32, error interface{}) {
-	if status < 200 || status > 599 {
-		status = 500
-	}
-	c.resp.Status = status
-	_ = c.Send(error)
-}
+//func (c *EventCtx) Error(status int32, error interface{}) {
+//	if status < 200 || status > 599 {
+//		status = 500
+//	}
+//	c.resp.Status = status
+//	_ = c.Send(error)
+//}
 
 func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 	u := gwUrl
@@ -132,4 +140,7 @@ func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
 	d, _ := io.ReadAll(resp.Body)
 	id := string(d)
 	return id, nil
+}
+func (c *EventCtx) NeedRetry() {
+	c.retry()
 }

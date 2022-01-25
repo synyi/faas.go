@@ -2,6 +2,7 @@ package faas
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nuid"
@@ -21,21 +22,31 @@ import (
 
 var nc *nats.Conn
 var gwUrl url.URL
+var clientId = nuid.Next()
+
+type heartBeat struct {
+	Uptime uint32
+	Name   string
+	Error  string
+	Status string
+	Type   string
+	ID     string
+}
 
 func init() {
 	g := os.Getenv("FAAS_GATEWAY")
-
 	gu, err := url.Parse(g)
 	if err != nil {
 		log.Panicln("invalid FAAS_GATEWAY url: ", err)
 	}
 	gwUrl = *gu
 }
-func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
+func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
 	target := os.Getenv("FAAS_TARGET")
 	natsUrl := os.Getenv("NATS_URL")
 	timeout := os.Getenv("FAAS_TIMEOUT")
 	concurrent := os.Getenv("FAAS_CONCURRENT")
+	start := time.Now()
 	if target == "" {
 		log.Fatalln("env FAAS_TARGET missing")
 	}
@@ -60,6 +71,17 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	nc, err = nats.Connect(natsUrl)
 	if err != nil {
 		log.Panicln("cannot connect to nats, ", err)
+	}
+	// heartbeat
+	for t := range time.NewTicker(10 * time.Second).C {
+		d, _ := json.Marshal(heartBeat{
+			Uptime: uint32(t.Sub(start).Seconds()),
+			Name:   target,
+			Status: "ok",
+			Type:   "function",
+			ID:     clientId,
+		})
+		_ = nc.Publish("sie-hearbeat", d)
 	}
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
@@ -92,7 +114,8 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 				err = func() (err error) {
 					var senderr error
 					var sent bool
-					ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+					//宽松一秒
+					ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration+time.Second)
 					defer func() {
 						cancel()
 						e := recover()
@@ -101,39 +124,56 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 						}
 					}()
 					c := ctxFromEventData(msg.Data)
+					if c.Ttl <= 0 {
+						log.Println("drop message due to TTL=0")
+						_ = msg.Term()
+						cancel()
+						return
+					}
+					var handlerStart time.Time
 					c.send = func() {
+						t := time.Now()
 						c.resp.Headers = buildHeaders(c.respHeaders)
-						c.resp.Time = time.Now().UnixMilli()
+						c.resp.Time = t.UnixMilli()
+						c.resp.UsedTime = uint32(t.Sub(handlerStart).Milliseconds())
 						d, _ := c.resp.Marshal()
 						senderr = nc.Publish("faas.response."+c.SenderId, d)
+						sent = true
+					}
+					c.retry = func() {
+						_ = msg.Nak()
 						sent = true
 					}
 					go func() {
 						<-ctx.Done()
 						if ctx.Err() == context.DeadlineExceeded {
-							log.Println("handler not finish in timeout, exit")
+							_ = msg.Term()
+							log.Println("handler not finish in time, exit!")
 							os.Exit(1)
 						}
 					}()
-					err = handler(context.Background(), c)
+					ctx2, cancel2 := context.WithTimeout(ctx, timeoutDuration)
+					handlerStart = time.Now()
+					resp, err := handler(ctx2, c)
+					cancel2()
+					cancel()
 					if !sent {
-						if err == nil {
-							c.send()
-							err = senderr
+						if err != nil {
+							_ = c.Response(500, err)
 						} else {
-							c.Error(500, err)
+							err = c.Response(200, resp)
+							if err != nil {
+								_ = c.Response(500, err)
+							}
 						}
-						if err == nil {
-							_ = msg.Ack()
-						} else {
-							_ = msg.Nak()
-						}
+						c.send()
+						_ = msg.Ack()
 					}
 					return
 				}()
 				if err != nil {
 					log.Println("panic:", err)
-					_ = msg.Nak()
+					_ = msg.Term()
 				}
 			}
 		}()
@@ -141,7 +181,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	wg.Wait()
 }
 
-func testInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
+func testInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
 
 }
 
@@ -155,7 +195,7 @@ func buildHeaders(h http.Header) []string {
 	return ret
 }
 
-func localInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
+func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
 	listen := os.Getenv("LISTEN")
 	if listen == "" {
 		listen = ":5001"
@@ -183,11 +223,25 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 					h.Add(k, vv)
 				}
 			}
+			if c.resp.Status == 0 {
+				c.resp.Status = 200
+			}
 			wr.WriteHeader(int(c.resp.Status))
 			wr.Write(c.resp.Body)
 			sended = true
 		}
-		err := handler(context.Background(), c)
+		c.retry = func() {
+			h := wr.Header()
+			for k, v := range c.respHeaders {
+				for _, vv := range v {
+					h.Add(k, vv)
+				}
+			}
+			wr.WriteHeader(500)
+			wr.Write([]byte("retry needed"))
+			sended = true
+		}
+		_, err := handler(context.Background(), c)
 		if sended {
 			if err != nil {
 				log.Printf("err after Send(), %v", err)
@@ -204,7 +258,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) error) {
 	log.Fatalln(http.ListenAndServe(listen, h))
 }
 
-func Init(handler func(ctx context.Context, eventCtx *EventCtx) error) {
+func Init(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
 	mode := os.Getenv("MODE")
 	switch mode {
 	case "prod":
