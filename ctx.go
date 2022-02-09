@@ -127,7 +127,8 @@ func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 
 func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
 	u := gwUrl
-	u.Path = "/api/blob?persist=true"
+	u.Path = "/api/blob"
+	u.Query().Add("persist", "true")
 	resp, err := http.Post(u.String(), "application/zip", r)
 	if err != nil {
 		return "", err
