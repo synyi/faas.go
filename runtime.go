@@ -144,6 +144,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 						_ = msg.Nak()
 						c.resp.Retry = true
 						c.resp.Body = []byte(reason)
+						c.resp.Time = time.Now().UnixMilli()
 						c.resp.Status = 500
 						d, _ := c.resp.Marshal()
 						senderr = nc.Publish("faas.response."+c.SenderId, d)
