@@ -140,8 +140,13 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 						senderr = nc.Publish("faas.response."+c.SenderId, d)
 						sent = true
 					}
-					c.retry = func() {
+					c.retry = func(reason string) {
 						_ = msg.Nak()
+						c.resp.Retry = true
+						c.resp.Body = []byte(reason)
+						c.resp.Status = 500
+						d, _ := c.resp.Marshal()
+						senderr = nc.Publish("faas.response."+c.SenderId, d)
 						sent = true
 					}
 					go func() {
@@ -230,7 +235,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 			wr.Write(c.resp.Body)
 			sended = true
 		}
-		c.retry = func() {
+		c.retry = func(reason string) {
 			h := wr.Header()
 			for k, v := range c.respHeaders {
 				for _, vv := range v {
@@ -238,7 +243,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 				}
 			}
 			wr.WriteHeader(500)
-			wr.Write([]byte("retry needed"))
+			wr.Write([]byte(reason))
 			sended = true
 		}
 		_, err := handler(context.Background(), c)

@@ -13,7 +13,7 @@ import (
 type EventCtx struct {
 	header http.Header
 	send   func()
-	retry  func()
+	retry  func(string)
 	*proto.Event
 	resp        proto.Response
 	respHeaders http.Header
@@ -141,6 +141,6 @@ func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
 	id := string(d)
 	return id, nil
 }
-func (c *EventCtx) NeedRetry() {
-	c.retry()
+func (c *EventCtx) NeedRetry(reason string) {
+	c.retry(reason)
 }
