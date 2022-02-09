@@ -73,16 +73,18 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 		log.Panicln("cannot connect to nats, ", err)
 	}
 	// heartbeat
-	for t := range time.NewTicker(10 * time.Second).C {
-		d, _ := json.Marshal(heartBeat{
-			Uptime: uint32(t.Sub(start).Seconds()),
-			Name:   target,
-			Status: "ok",
-			Type:   "function",
-			ID:     clientId,
-		})
-		_ = nc.Publish("sie-hearbeat", d)
-	}
+	go func() {
+		for t := range time.NewTicker(10 * time.Second).C {
+			d, _ := json.Marshal(heartBeat{
+				Uptime: uint32(t.Sub(start).Seconds()),
+				Name:   target,
+				Status: "ok",
+				Type:   "function",
+				ID:     clientId,
+			})
+			_ = nc.Publish("sie-hearbeat", d)
+		}
+	}()
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
 	msgCh := make(chan *nats.Msg, concurrenti)
