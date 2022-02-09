@@ -82,7 +82,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 				Type:   "function",
 				ID:     clientId,
 			})
-			_ = nc.Publish("sie-hearbeat", d)
+			_ = nc.Publish("sie-heartbeat", d)
 		}
 	}()
 	js, _ := nc.JetStream()
