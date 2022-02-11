@@ -174,9 +174,8 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 								_ = c.Response(500, err)
 							}
 						}
-						c.send()
-						_ = msg.Ack()
 					}
+					_ = msg.Ack()
 					return
 				}()
 				if err != nil {
