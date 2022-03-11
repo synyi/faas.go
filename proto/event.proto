@@ -29,6 +29,7 @@ message Event {
   int64 time = 12;
   string Subject = 13;
   string RequestId = 14;
+  map<string, string> Params = 15;
 }
 
 message Response {

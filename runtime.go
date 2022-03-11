@@ -87,7 +87,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 	}()
 	js, _ := nc.JetStream()
 	stream := "faas.event." + target
-	msgCh := make(chan *nats.Msg, concurrenti)
+	msgCh := make(chan *nats.Msg, concurrenti*100)
 	sub, err := js.ChanQueueSubscribe(stream, "dg."+stream, msgCh, nats.Durable(strings.ReplaceAll(stream, ".", "_")))
 	if err != nil {
 		log.Panicln(err)
