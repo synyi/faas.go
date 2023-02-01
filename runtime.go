@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nuid"
-	"github.com/synyi/faas.go/proto"
 	"io"
 	"log"
 	"net/http"
@@ -18,6 +15,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nuid"
+	"github.com/synyi/faas.go/proto"
 )
 
 var nc *nats.Conn
@@ -124,6 +125,7 @@ func prodInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}
 						if e != nil {
 							err = fmt.Errorf("%s", e)
 						}
+						log.Println(senderr)
 					}()
 					c := ctxFromEventData(msg.Data)
 					if c.Ttl <= 0 {
