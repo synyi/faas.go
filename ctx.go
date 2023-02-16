@@ -3,11 +3,14 @@ package faas
 import (
 	"encoding/json"
 	"errors"
-	"github.com/synyi/faas.go/proto"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+
+	"github.com/synyi/faas.go/proto"
 )
 
 type EventCtx struct {
@@ -126,10 +129,12 @@ func (c *EventCtx) GetBlob(id string) (io.ReadCloser, error) {
 }
 
 func (c *EventCtx) UploadBlob(r io.Reader) (string, error) {
-	u := gwUrl
-	u.Path = "/api/blob"
-	u.Query().Add("persist", "true")
-	resp, err := http.Post(u.String(), "application/zip", r)
+	// u := gwUrl
+	// u.Path = "/api/blob"
+	// u.Query().Add("persist", "true")
+	// resp, err := http.Post(u.String(), "application/zip", r)
+	g := os.Getenv("FAAS_GATEWAY")
+	resp, err := http.Post(fmt.Sprintf("%s/api/blob?persist=true", g), "application/zip", r)
 	if err != nil {
 		return "", err
 	}
