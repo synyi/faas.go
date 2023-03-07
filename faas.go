@@ -2,12 +2,13 @@ package faas
 
 import (
 	"context"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nuid"
-	"github.com/synyi/faas.go/proto"
 	"log"
 	"os"
 	"sync"
+
+	"github.com/nats-io/nats.go"
+	"github.com/oklog/ulid/v2"
+	"github.com/synyi/faas.go/proto"
 )
 
 var functionName string
@@ -56,7 +57,7 @@ var callback = sync.Once{}
 // Call another faas function
 func call(ctx context.Context, target string, req *proto.Event, ttl int32) (*proto.Response, error) {
 	callback.Do(initCallback)
-	req.EventId = nuid.Next()
+	req.EventId = ulid.Make().String()
 	req.Ttl = ttl
 	req.Source = functionName
 	req.SenderId = clientId

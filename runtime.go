@@ -17,13 +17,13 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nuid"
+	"github.com/oklog/ulid/v2"
 	"github.com/synyi/faas.go/proto"
 )
 
 var nc *nats.Conn
 var gwUrl url.URL
-var clientId = nuid.Next()
+var clientId = ulid.Make().String()
 
 type heartBeat struct {
 	Uptime uint32
@@ -212,7 +212,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 	h := http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		event := &proto.Event{
-			EventId:     nuid.Next(),
+			EventId:     ulid.Make().String(),
 			SenderId:    "LOCAL",
 			Type:        proto.HTTP,
 			Method:      r.Method,

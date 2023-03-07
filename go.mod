@@ -12,6 +12,7 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/nats-io/nats-server/v2 v2.6.5 // indirect
 	github.com/nats-io/nkeys v0.3.0 // indirect
+	github.com/oklog/ulid/v2 v2.1.0 // indirect
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 )
