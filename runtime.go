@@ -210,6 +210,10 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 		listen = ":30000"
 	}
 	h := http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
+		if r.RequestURI == "/metrics" { // prometheus扫描屏蔽
+			return
+		}
+
 		body, _ := io.ReadAll(r.Body)
 		event := &proto.Event{
 			EventId:     ulid.Make().String(),
