@@ -207,7 +207,7 @@ func buildHeaders(h http.Header) []string {
 func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
 	listen := os.Getenv("LISTEN")
 	if listen == "" {
-		listen = ":5001"
+		listen = ":30000"
 	}
 	h := http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
