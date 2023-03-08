@@ -250,12 +250,16 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 			wr.Write([]byte(reason))
 			sended = true
 		}
-		_, err := handler(context.Background(), c)
-		if sended {
+		resp, err := handler(context.Background(), c)
+		if !sended {
 			if err != nil {
-				log.Printf("err after Send(), %v", err)
+				_ = c.Response(500, err)
+			} else {
+				err = c.Response(200, resp)
+				if err != nil {
+					_ = c.Response(500, err)
+				}
 			}
-			return
 		}
 		if err != nil {
 			http.Error(wr, err.Error(), 500)
