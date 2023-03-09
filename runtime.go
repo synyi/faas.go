@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/martian/cors"
 	"github.com/nats-io/nats.go"
 	"github.com/oklog/ulid/v2"
 	"github.com/synyi/faas.go/proto"
@@ -272,7 +273,7 @@ func localInit(handler func(ctx context.Context, eventCtx *EventCtx) (interface{
 		}
 	})
 	log.Println("test handler in " + listen)
-	log.Fatalln(http.ListenAndServe(listen, h))
+	log.Fatalln(http.ListenAndServe(listen, cors.NewHandler(h)))
 }
 
 func Init(handler func(ctx context.Context, eventCtx *EventCtx) (interface{}, error)) {
